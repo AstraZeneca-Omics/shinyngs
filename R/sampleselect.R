@@ -43,13 +43,11 @@ sampleselectInput <- function(id, eselist, getExperiment, select_samples = TRUE)
         }
         
         # We can select by sample in any case
-        
         inputs <- list(h5("Select samples/ columns"), selectInput(ns("sampleSelect"), "Select samples by", selectby, selected = selectby[length(selectby)]), 
             conditionalPanel(condition = paste0("input['", ns("sampleSelect"), "'] == 'name' "), checkboxGroupInput(ns("samples"), "Samples:", colnames(ese), 
                 selected = colnames(ese), inline = TRUE)))
         
         # Add in group selection if relevant
-        
         if (length(eselist@group_vars) > 0) {
             inputs <- pushToList(inputs, conditionalPanel(condition = paste0("input['", ns("sampleSelect"), "'] == 'group' "), selectInput(ns("sampleGroupVar"), 
                 "Define groups by:", structure(eselist@group_vars, names = prettifyVariablename(eselist@group_vars)), selected = eselist@default_groupvar), 
@@ -93,38 +91,74 @@ sampleselect <- function(input, output, session, eselist, getExperiment) {
     getSummaryType <- callModule(summarisematrix, "summarise")
     
     # Render the sampleGroupVal() element based on sampleGroupVar
-    
     output$groupSamples <- renderUI({
-        
         ese <- getExperiment()
-        
+
         if (input$sampleSelect == "group" && length(eselist@group_vars) > 0) {
+
             validate(need(input$sampleGroupVar, FALSE))
-            group_values <- as.character(unique(ese[[isolate(input$sampleGroupVar)]]))
+            cond.levs.tab <- sort(table(ese[[ input$sampleGroupVar ]]), decreasing=TRUE)
+
+            cond.choices.lst <- as.list( names(cond.levs.tab) )
+            names(cond.choices.lst) <- paste0(names(cond.levs.tab)," [",cond.levs.tab,"]")
+
+            no.grps.toShow <- ifelse(length(cond.choices.lst)>2, 2, length(cond.choices.lst))
+
             ns <- session$ns
-            
-            list(checkboxGroupInput(ns("sampleGroupVal"), "Groups", group_values, selected = group_values), summarisematrixInput(ns("summarise")))
+
+            list(
+                shinyWidgets::pickerInput(
+                    inputId  = ns("sampleGroupVal"),
+                    label    = paste0("Add/remove '",input$sampleGroupVar,"' group(s):"),
+                    choices  = cond.choices.lst,
+                    selected = cond.choices.lst[1:no.grps.toShow],
+                    options  = list(
+                        `actions-box`= TRUE,
+                        style = "btn-royal btn-sm", # ?actionBttn & https://github.com/dreamRs/shinyWidgets/issues/74
+                        `selected-text-format` = "count > 3"
+                    ),
+                    multiple = TRUE
+                ),
+
+                radioButtons(
+                    inputId  = ns("autoPlotting"),
+                    label    = "Automatic Plotting of Data:",
+                    choices  = list(`'OFF' - click the below button to display`="Manual", `'ON'`="Auto"),
+                    selected = "Manual"
+                ),
+
+                conditionalPanel(
+                    condition = paste0("input['",ns("autoPlotting"),"'] == 'Manual'"),
+                    shinyWidgets::actionBttn(
+                        inputId = ns("DisplayPlots"),
+                        label   = "Analyse Selected Samples",
+                        style   = "gradient",
+                        color   = "success",
+                        block   = TRUE, size = "sm",
+                        icon    = icon("stream")
+                    )
+                ),
+
+                hr(),
+                summarisematrixInput(ns("summarise"))
+            )
         }
     })
-    
+
     # Output a reactive so that other modules know whether we've selected by sample or group
-    
-    getSampleSelect <- reactive({
-        input$sampleSelect
-    })
+    getSampleSelect <- reactive({ input$sampleSelect })
     
     # Return summary type
+    getSampleGroupVar <- reactive({ input$sampleGroupVar })
     
-    getSampleGroupVar <- reactive({
-        input$sampleGroupVar
-    })
+    Samples.lst <- list(
+        getSampleGroupVar = getSampleGroupVar, getSummaryType = getSummaryType, getSampleSelect = getSampleSelect
+    )
     
     # Reactive expression for selecting the specified columns
-    
-    selectSamples <- reactive({
+    Samples.lst[[ "selectSamples" ]] = reactive({
         withProgress(message = "Selecting samples", value = 0, {
             ese <- getExperiment()
-            
             validate(need(!is.null(input$sampleSelect), "Waiting for form to provide sampleSelect"))
             
             if (input$sampleSelect == "all") {
@@ -138,20 +172,22 @@ sampleselect <- function(input, output, session, eselist, getExperiment) {
                 }
                 
                 if (input$sampleSelect == "name") {
-                  return(input$samples)
+                    return(input$samples)
                 } else {
-                  
-                  # Any NA in the colData will become string '' via the inputs, so make sure we consider that when matching
-                  
-                  samplegroups <- as.character(ese[[isolate(input$sampleGroupVar)]])
-                  samplegroups[is.na(samplegroups)] <- ""
-                  
-                  return(colnames(ese)[samplegroups %in% input$sampleGroupVal])
+                    ## isolate() at this point?? ##
+                    #samplegroups <- as.character(ese[[isolate(input$sampleGroupVar)]])
+                    samplegroups <- as.character(ese[[ input$sampleGroupVar ]])
+                    # Any NA in the colData will become string '' via the inputs, so make sure we consider that when matching
+                    samplegroups[is.na(samplegroups)] <- ""
+
+                    sample.ids <- colnames(ese)[ samplegroups %in% input$sampleGroupVal ]
+                    return(sample.ids)
                 }
                 
             }
         })
     })
-    
-    list(selectSamples = selectSamples, getSampleGroupVar = getSampleGroupVar, getSummaryType = getSummaryType, getSampleSelect = getSampleSelect)
-} 
+
+    return(Samples.lst)
+}
+

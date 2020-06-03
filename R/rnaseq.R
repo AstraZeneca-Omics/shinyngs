@@ -133,12 +133,25 @@ rnaseqInput <- function(id, eselist) {
     }
     
     # Add the gene info plots
-    
     navbar_menus <- pushToList(navbar_menus, tabPanel("Gene info", value = "geneinfo", sidebarLayout(sidebarPanel(geneInput(ns("gene"), eselist), width = 3), 
-        mainPanel(geneOutput(ns("gene"), eselist), width = 9)), icon = icon("bar-chart-o")))
+        mainPanel(geneOutput(ns("gene"), eselist), width = 9)), icon = icon("th-list"))) # icon was "bar-chart-o"
+
+
+    ## New module to display boxplots for multiple genes & conditions - richard.coulson@astrazeneca.com ##
+    navbar_menus <- pushToList(
+        navbar_menus,
+        tabPanel(
+            "Gene Boxplots",
+            h3("Display boxplots of up to five genes for selected treatments/conditions."),
+            sidebarLayout(
+                sidebarPanel( scatterInput(ns("multi-bxplt"), eselist), width=3),
+                mainPanel(    scatterOutput(ns("multi-bxplt")),         width=9)
+            ),
+            icon=icon("signal")
+        )
+    )
     
     # Add the final wrappers
-    
     cssfile <- system.file("www", paste0(packageName(), ".css"), package = packageName())
     fluidPage(includeCSS(cssfile), theme = shinythemes::shinytheme("cosmo"), shinyjs::useShinyjs(), do.call(navbarPage, navbar_menus))
 }
@@ -174,7 +187,6 @@ rnaseq <- function(input, output, session, eselist) {
     }
     
     # Now a lot of boring calls to all the modules to activate the UI parts
-    
     callModule(experimenttable, "experimenttable", eselist)
     callModule(rowmetatable, "rowmetatable", eselist)
     callModule(heatmap, "heatmap-clustering", eselist, type = "samples")
@@ -185,9 +197,11 @@ rnaseq <- function(input, output, session, eselist) {
     callModule(boxplot, "boxplot", eselist)
     callModule(dendro, "dendro", eselist)
     callModule(assaydatatable, "expression", eselist)
+    ## Boxplots for multiple genes & conditions ##
+    callModule(scatter, "multi-bxplt", eselist) 
+    
     
     # Calls for the various optional tables
-    
     if (any(unlist(lapply(eselist, function(ese) {
         length(ese@read_reports) > 0
     })))) {

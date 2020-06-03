@@ -1,6 +1,6 @@
 Package: shinyngs
 Title: Shiny apps for NGS data
-Version: 0.0.1
+Version: 0.0.2
 Authors@R: person("Jonathan", "Manning", email = "Jonathan.Manning@ed.ac.uk", role = c("aut", "cre"))
 Description: Provides Shiny applications for various array and NGS applications.
     Currently very RNA-seq centric, with plans for expansion.
@@ -21,7 +21,9 @@ Imports:
     shiny,
     shinyjs,
     shinythemes,
-    SummarizedExperiment
+    SummarizedExperiment,
+    shinyWidgets,
+    tidyr
 Suggests:
     yaml,
     shinyBS,
