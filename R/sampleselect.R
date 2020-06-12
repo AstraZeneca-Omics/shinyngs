@@ -25,14 +25,12 @@
 
 sampleselectInput <- function(id, eselist, getExperiment, select_samples = TRUE) {
     
-    ns <- NS(id)
-    
+    ns  <- NS(id)
     ese <- getExperiment()
     
     if (select_samples) {
         
         # If grouping variables have been supplied we can use them to define sample selection
-        
         selectby <- "name"
         if (length(eselist@group_vars) > 0) {
             selectby <- c(selectby, "group")
@@ -41,19 +39,57 @@ sampleselectInput <- function(id, eselist, getExperiment, select_samples = TRUE)
                 default_groupvar <- eselist@default_groupvar
             }
         }
-        
-        # We can select by sample in any case
-        inputs <- list(h5("Select samples/ columns"), selectInput(ns("sampleSelect"), "Select samples by", selectby, selected = selectby[length(selectby)]), 
-            conditionalPanel(condition = paste0("input['", ns("sampleSelect"), "'] == 'name' "), checkboxGroupInput(ns("samples"), "Samples:", colnames(ese), 
-                selected = colnames(ese), inline = TRUE)))
-        
+
+        inputs <- list(
+            h5("Query conditions ('group') or sample identifiers ('name')."),
+            selectInput(ns("sampleSelect"), "Select by", selectby, selected = selectby[length(selectby)])
+        )
         # Add in group selection if relevant
         if (length(eselist@group_vars) > 0) {
-            inputs <- pushToList(inputs, conditionalPanel(condition = paste0("input['", ns("sampleSelect"), "'] == 'group' "), selectInput(ns("sampleGroupVar"), 
-                "Define groups by:", structure(eselist@group_vars, names = prettifyVariablename(eselist@group_vars)), selected = eselist@default_groupvar), 
-                uiOutput(ns("groupSamples"))))
+            inputs <- pushToList(inputs,
+                selectInput(
+                    inputId  = ns("sampleGroupVar"), 
+                    label    = "Choose condition of interest:",
+                    choices  = structure(eselist@group_vars, names = prettifyVariablename(eselist@group_vars)),
+                    selected = eselist@default_groupvar
+                )
+            )
         }
         
+        # We can select by sample in any case
+        inputs <- pushToList(inputs,
+            list(
+                conditionalPanel(
+                    condition = paste0("input['", ns("sampleSelect"), "'] == 'name'"),
+                    shinyWidgets::pickerInput(
+                        inputId = ns("samples"),
+                        label   = "",
+                        choices = "",
+                        options = list(
+                            `actions-box`= TRUE,
+                            style = "btn-royal btn-sm",
+                            `selected-text-format` = "count > 3"
+                        ),
+                        multiple = TRUE
+                    )
+                ),
+                conditionalPanel(
+                    condition = paste0("input['", ns("sampleSelect"), "'] == 'group'"),
+                    shinyWidgets::pickerInput(
+                        inputId = ns("sampleGroupVal"),
+                        label   = "",
+                        choices = "",
+                        options = list(
+                            `actions-box`= TRUE,
+                            style = "btn-royal btn-sm",
+                            `selected-text-format` = "count > 3"
+                        ),
+                        multiple = TRUE
+                    )
+                ),
+                uiOutput(ns("groupSamples"))
+            )
+        )
     } else {
         inputs <- list(hiddenInput(ns("sampleSelect"), "all"))
     }
@@ -88,106 +124,153 @@ sampleselectInput <- function(id, eselist, getExperiment, select_samples = TRUE)
 
 sampleselect <- function(input, output, session, eselist, getExperiment) {
     
+    ns <- session$ns
     getSummaryType <- callModule(summarisematrix, "summarise")
-    
-    # Render the sampleGroupVal() element based on sampleGroupVar
+    #print(slotNames(eselist))
+
     output$groupSamples <- renderUI({
+        list(
+            radioButtons(
+                inputId  = ns("autoPlotting"),
+                label    = "Automatic Plotting of Data:",
+                choices  = list(`'ON'`="Auto", `'OFF' - click the below button to display`="Manual"),
+                selected = "Manual"
+            ),
+            conditionalPanel(
+                condition = paste0("input['",ns("autoPlotting"),"'] == 'Manual'"),
+                shinyWidgets::actionBttn(
+                    inputId = ns("DisplayPlots"),
+                    label   = "Analyse Selected Samples",
+                    style   = "gradient",
+                    color   = "success",
+                    block   = TRUE, size = "sm",
+                    icon    = icon("stream")
+                )
+            ),
+            hr(),
+            summarisematrixInput( ns("summarise") )
+        )
+    })
+
+    # Render the sampleGroupVal() element based on sampleGroupVar
+    observeEvent(input$sampleGroupVar, {
         ese <- getExperiment()
 
-        if (input$sampleSelect == "group" && length(eselist@group_vars) > 0) {
+        validate(need(input$sampleGroupVar, FALSE))
+        cond.levs.tab <- sort(table(ese[[ input$sampleGroupVar ]]), decreasing=TRUE)
 
-            validate(need(input$sampleGroupVar, FALSE))
-            cond.levs.tab <- sort(table(ese[[ input$sampleGroupVar ]]), decreasing=TRUE)
+        cond.choices.lst <- as.list( names(cond.levs.tab) )
+        names(cond.choices.lst) <- paste0(names(cond.levs.tab)," [",cond.levs.tab,"]")
 
-            cond.choices.lst <- as.list( names(cond.levs.tab) )
-            names(cond.choices.lst) <- paste0(names(cond.levs.tab)," [",cond.levs.tab,"]")
+        no.grps.toShow <- ifelse(length(cond.choices.lst)>2, 2, length(cond.choices.lst))
 
-            no.grps.toShow <- ifelse(length(cond.choices.lst)>2, 2, length(cond.choices.lst))
+        shinyWidgets::updatePickerInput(
+            session, "sampleGroupVal",
+            label    = paste0("Add/remove '",input$sampleGroupVar,"' group(s):"),
+            choices  = cond.choices.lst,
+            selected = cond.choices.lst[1:no.grps.toShow]
+        )
 
-            ns <- session$ns
+        sampleGrp.lst <-  reactive({
+            Grps <- ese[[ input$sampleGroupVar ]]
+            names(Grps) <- colnames(ese)
 
-            list(
-                shinyWidgets::pickerInput(
-                    inputId  = ns("sampleGroupVal"),
-                    label    = paste0("Add/remove '",input$sampleGroupVar,"' group(s):"),
-                    choices  = cond.choices.lst,
-                    selected = cond.choices.lst[1:no.grps.toShow],
-                    options  = list(
-                        `actions-box`= TRUE,
-                        style = "btn-royal btn-sm", # ?actionBttn & https://github.com/dreamRs/shinyWidgets/issues/74
-                        `selected-text-format` = "count > 3"
-                    ),
-                    multiple = TRUE
-                ),
-
-                radioButtons(
-                    inputId  = ns("autoPlotting"),
-                    label    = "Automatic Plotting of Data:",
-                    choices  = list(`'OFF' - click the below button to display`="Manual", `'ON'`="Auto"),
-                    selected = "Manual"
-                ),
-
-                conditionalPanel(
-                    condition = paste0("input['",ns("autoPlotting"),"'] == 'Manual'"),
-                    shinyWidgets::actionBttn(
-                        inputId = ns("DisplayPlots"),
-                        label   = "Analyse Selected Samples",
-                        style   = "gradient",
-                        color   = "success",
-                        block   = TRUE, size = "sm",
-                        icon    = icon("stream")
-                    )
-                ),
-
-                hr(),
-                summarisematrixInput(ns("summarise"))
+            grp.lst <- lapply(unique(Grps),
+                function(x) {
+                    # https://github.com/dreamRs/shinyWidgets/issues/58
+                    as.list( sort(names(Grps)[ Grps==x ]) )
+                }
             )
-        }
+            names(grp.lst) <- unique(Grps)
+            return(grp.lst)
+        })
+
+        GrpList.tab  <- unlist( lapply(sampleGrp.lst(), function(x) length(unlist(x))) )
+        GrpList.Rank <- order(GrpList.tab, -xtfrm(names(GrpList.tab)), decreasing = T)
+        cat("Dropdown list :-\n")
+        print(GrpList.tab[GrpList.Rank])
+
+        Selected.ranks   <- if (length(GrpList.Rank)>2) GrpList.Rank[1:2] else GrpList.Rank
+        Selected.samples <- Reduce(
+            union, unlist( lapply(sampleGrp.lst()[ Selected.ranks ], function(x) unlist(x)) )
+        )
+        cat("Selected sample IDs :-\n")
+        print(Selected.samples)
+
+        shinyWidgets::updatePickerInput(
+            session, "samples",
+            choices  = sampleGrp.lst()[ GrpList.Rank ],
+            selected = Selected.samples,
+            label    = paste0("Sample names grouped by '",input$sampleGroupVar,"' :"),
+        )
     })
+
 
     # Output a reactive so that other modules know whether we've selected by sample or group
     getSampleSelect <- reactive({ input$sampleSelect })
-    
     # Return summary type
     getSampleGroupVar <- reactive({ input$sampleGroupVar })
     
     Samples.lst <- list(
         getSampleGroupVar = getSampleGroupVar, getSummaryType = getSummaryType, getSampleSelect = getSampleSelect
     )
-    
+
     # Reactive expression for selecting the specified columns
     Samples.lst[[ "selectSamples" ]] = reactive({
+
+        validate(need(!is.null(input$sampleSelect), "Waiting for form to provide sampleSelect"))
+
         withProgress(message = "Selecting samples", value = 0, {
             ese <- getExperiment()
-            validate(need(!is.null(input$sampleSelect), "Waiting for form to provide sampleSelect"))
-            
-            if (input$sampleSelect == "all") {
-                return(colnames(ese))
-            } else {
-                
-                validate(need(!is.null(input$samples), "Waiting for form to provide samples"))
-                
-                if (length(eselist@group_vars) > 0) {
-                  validate(need(!is.null(input$sampleGroupVal), FALSE))
-                }
-                
-                if (input$sampleSelect == "name") {
-                    return(input$samples)
-                } else {
-                    ## isolate() at this point?? ##
-                    #samplegroups <- as.character(ese[[isolate(input$sampleGroupVar)]])
-                    samplegroups <- as.character(ese[[ input$sampleGroupVar ]])
-                    # Any NA in the colData will become string '' via the inputs, so make sure we consider that when matching
-                    samplegroups[is.na(samplegroups)] <- ""
+            sample.sheet <- colData(ese)
 
-                    sample.ids <- colnames(ese)[ samplegroups %in% input$sampleGroupVal ]
-                    return(sample.ids)
-                }
+            if (! isTruthy(input$autoPlotting) || input$autoPlotting=="Manual") {
+                manual.selected <- eventReactive(input$DisplayPlots, {
+                    Selected_Sample_IDs(
+                        input$sampleSelect, input$sampleGroupVar, input$sampleGroupVal,
+                        rownames(sample.sheet), input$samples, length(eselist@group_vars), sample.sheet[[ input$sampleGroupVar ]]
+                    )
+                }, ignoreNULL=FALSE)
                 
+                # https://stackoverflow.com/questions/57182912/r-action-button-and-eventreactive-not-working
+                observe( manual.selected() )
+                return( manual.selected() )
+            
+            } else {
+                Selected_Sample_IDs(
+                    input$sampleSelect, input$sampleGroupVar, input$sampleGroupVal,
+                    rownames(sample.sheet), input$samples, length(eselist@group_vars), sample.sheet[[ input$sampleGroupVar ]]
+                )
             }
         })
     })
-
     return(Samples.lst)
 }
+
+Selected_Sample_IDs <- function(Selection_Type, Group_Variable, Group_Values, Sample_IDs, Selected_IDs, No_Grps, Levels) {
+
+    selected.ids <- if (Selection_Type == "all") {
+        Sample_IDs
+    } else {
+        validate(need(!is.null(Selected_IDs), "Waiting for form to provide samples"))
+
+        if (No_Grps>0) {
+            validate(need(!is.null(Group_Variable), FALSE))
+        }
+
+        if (Selection_Type == "name") {
+            Selected_IDs
+        } else {
+            samplegroups <- as.character(Levels)
+            # Any NA in the colData will become string '' via the inputs, so make sure we consider that when matching
+            samplegroups[ is.na(samplegroups) ] <- ""
+
+            Sample_IDs[ samplegroups %in% Group_Values ]
+        }
+    }
+    return(selected.ids)
+}
+
+
+
 

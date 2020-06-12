@@ -161,7 +161,8 @@ scatter <- function(input, output, session, eselist) {
 
 
       output$bxPlot1 <- renderPlot({
-        shinyngs:::Display.Bxp(
+        #shinyngs:::Display.Bxp(
+        Display.Bxp(
           Plt.Vals.df(), Bxp.Vals.df(), Gene.Identifiers(), Assay_Type(), input$Pheno, input$Pt.Colour,
           names(assays.lst)[ assays.lst==input$AssayType ]
         )
@@ -224,7 +225,7 @@ Display.Bxp <- function(Bxp_Vals, Vals_to_Plot, Gene_IDs, Assay, Condition, Pale
       c(0.25, 0.75, op.PlotRegion[3:4])     # 50% for between four & seven
     } else if (no.Plots<11) { 
       c(0.125, 0.875, op.PlotRegion[3:4])   # 75% for eight to ten
-    } else { c(0.075, op.PlotRegion[2:4]) }
+    } else { c(0.085, op.PlotRegion[2:4]) }
 
 
     op.margins <-par()$mar # ‘c(bottom, left, top, right)’
@@ -281,8 +282,8 @@ Display.Bxp <- function(Bxp_Vals, Vals_to_Plot, Gene_IDs, Assay, Condition, Pale
     #box(col="darkgreen", lwd=4, which="outer")
     
     
-    no.key.cols <- ifelse(length(Palette)>15, 4,
-      ifelse(length(Palette)>2, 3, length(Palette))
+    no.key.cols <- ifelse(length(Palette)>15, 3,
+      ifelse(length(Palette)>2, 2, length(Palette))
     )
 
     legend(
