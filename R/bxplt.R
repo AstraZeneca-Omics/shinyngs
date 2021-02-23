@@ -111,8 +111,8 @@ scatter <- function(input, output, session, eselist) {
       else { reactive({ names(table(pheno.dat[,input$Pheno])) }) }
       shinyWidgets::updatePickerInput(session, "levels", choices=levs() )
     }, ignoreInit = TRUE)
-    # Will _NOT_ run when the ‘observeEvent’/‘eventReactive’ is created #
-    # (because ‘ignoreInit = TRUE’), but it will run every other time.  #
+    # Will _NOT_ run when the "observeEvent"/"eventReactive" is created #
+    # (because "ignoreInit = TRUE"), but it will run every other time.  #
 
 
     ## Select analysis group(s) - **NEED AT LEAST ONE** ##
@@ -213,7 +213,7 @@ Display.Bxp <- function(Bxp_Vals, Vals_to_Plot, Gene_IDs, Assay, Condition, Pale
     cat("\nNo. of box plots to be displayed : ",no.Plots,"\n", sep="")
 
     
-    # ‘plt’ A vector of the form ‘c(x1, x2, y1, y2)’ giving the coordinates
+    # `plt` A vector of the form `c(x1, x2, y1, y2)` giving the coordinates
     #  of the plot region as fractions of the current figure region.
     op.PlotRegion <- par()$plt
     op.PlotRegion[3] = 0.175
@@ -228,7 +228,7 @@ Display.Bxp <- function(Bxp_Vals, Vals_to_Plot, Gene_IDs, Assay, Condition, Pale
     } else { c(0.085, op.PlotRegion[2:4]) }
 
 
-    op.margins <-par()$mar # ‘c(bottom, left, top, right)’
+    op.margins <-par()$mar # `c(bottom, left, top, right)`
     op.MarginLine <- par()$mgp # c("axis title", "axis labels", "axis line")
 
     par( 

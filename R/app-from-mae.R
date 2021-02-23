@@ -1,8 +1,23 @@
-#' This function reads a RDS file containing a 'MultiAssayExperiment' object, and returns a list containing a 'SummarizedExperiment' object with the results from differential expression & geneset enrichment analyses if performed.
-#' @param rds.file Location of RDS file of the MAE object.
-#' @keywords mae
+#' Load a MultiAssayExperiment object
+#'
+#' Reads a RDS file containing the MAE object, and returns a list containing a \code{SummarizedExperiment} object with the results from differential expression & geneset enrichment analyses if performed.
+#'
+#' @param rds.file String - location of RDS file of the MAE object
+#'
+#' @return A list with a \code{se} component (the \code{SummarizedExperiment} object), and optionally \code{BioTypes}, \code{Contrast.Names} and \code{Statistics} if DEA/GSEA results are present; these contain the biotypes of the genes analysed, the contrasts and the names of the summary statistics of the DEA and GSEA runs, respectively.
+#'
+#' @examples
+#' \dontrun{
+#' # MultiAssayExperiment with DEA & GSE data
+#' rds.file1 <- "path_to_rds_file1/mae-dea.rds"
+#' dea.lst <- Read.MAE_RDS(rds.file1)
+#'
+#' # Exploratory ShinyNGS app. - MultiAssayExperiment with only raw counts, VSTs etc.
+#' rds.file2 <- "path_to_rds_file2/mae-explr.rds"
+#' explr.lst <- Read.MAE_RDS(rds.file2)
+#' }
+#'
 #' @export
-
 Read.MAE_RDS <- function(rds.file) {
 
 	if (file.exists(rds.file)) {

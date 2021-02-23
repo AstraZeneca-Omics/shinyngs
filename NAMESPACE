@@ -2,6 +2,7 @@
 
 export(ExploratorySummarizedExperiment)
 export(ExploratorySummarizedExperimentList)
+export(Read.MAE_RDS)
 export(annotatedHeatmap)
 export(barcode_plot)
 export(bootstrapMedian)

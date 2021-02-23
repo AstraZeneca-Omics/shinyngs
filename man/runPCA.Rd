@@ -4,7 +4,7 @@
 \alias{runPCA}
 \title{Run a simple PCA analysis}
 \usage{
-runPCA(matrix)
+runPCA(pcavals)
 }
 \arguments{
 \item{matrix}{Matrix (not logged)}
