@@ -34,3 +34,4 @@ Suggests:
     Gviz
 RoxygenNote: 7.0.2
 VignetteBuilder: knitr
+Encoding: UTF-8
