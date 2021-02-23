@@ -6,7 +6,8 @@ Description: Provides Shiny applications for various array and NGS applications.
     Currently very RNA-seq centric, with plans for expansion.
 Depends:
     R (>= 3.2.2),
-    SummarizedExperiment
+    SummarizedExperiment,
+    MultiAssayExperiment
 License: AGPL-3.0
 LazyData: true
 Imports:

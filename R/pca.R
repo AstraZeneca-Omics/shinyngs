@@ -151,9 +151,18 @@ pca <- function(input, output, session, eselist) {
     })
     
     # Run the PCA
-    
     pca <- reactive({
+        assay     <- getAssay()
         pcamatrix <- selectMatrix()
+        cat("\nAssay Type Check : '",assay,"'\nRange of values = ",
+            paste(signif(range(pcamatrix), digits=5), collapse="-"),"\n", sep="")
+
+        if (grepl("count|tpm", assay, ignore.case=T)) {
+            pcamatrix <- log2(pcamatrix + 1)
+            cat("Logged values range : ",
+                paste(signif(range(pcamatrix), digits=5), collapse="-"),"\n", sep="")
+        }
+
         runPCA(pcamatrix)
     })
     
@@ -248,14 +257,12 @@ pca <- function(input, output, session, eselist) {
 #' @examples
 #' runPCA(mymatrix)
 
-runPCA <- function(matrix) {
+runPCA <- function(pcavals) {
     
     withProgress(message = "Running principal component analysis", value = 0, {
         
-        pcavals <- log2(matrix + 1)
-        
+        #pcavals <- log2(matrix + 1)
         pcavals <- pcavals[apply(pcavals, 1, function(x) length(unique(x))) > 1, ]
-        
         prcomp(as.matrix(t(pcavals), scale = T))
         
     })

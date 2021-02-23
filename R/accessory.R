@@ -331,9 +331,14 @@ inlineField <- function(field_def, label, labelwidth = 6) {
 #' as.character() 
 
 cardinalNumericField <- function(id, cardinal_id, label, value, cardinality = "<=", step = NA, min = NA, max = NA) {
-    tags$div(fluidRow(column(4, HTML(paste0("<b>", label, ":</b>&nbsp;"))), column(3, selectInput(cardinal_id, label = NULL, choices = c("<=", ">=", ">= or <= -", 
-        "<= and >= -"), selected = cardinality), selectize = FALSE), column(5, numericInput(id, label = NULL, value = value, min = min, max = max, step = step))), 
-        class = "shinyngs-cardinalfield")
+    tags$div(
+        fluidRow(
+            column(4, HTML(paste0("<b>", label, ":</b>&nbsp;"))),
+            column(3, selectInput(cardinal_id, label = NULL, choices = c("<=", ">=", ">= or <="), selected = cardinality), selectize = FALSE),
+            column(5, numericInput(id, label = NULL, value = value, min = min, max = max, step = step))
+        ), 
+        class = "shinyngs-cardinalfield"
+    )
 }
 
 #' Evaluate a vector of values with respect to a limit and a cardinality, being
@@ -347,16 +352,18 @@ cardinalNumericField <- function(id, cardinal_id, label, value, cardinality = "<
 #' @return out A logical vector
 
 evaluateCardinalFilter <- function(values, cardinality, limit) {
-    
+
     if (cardinality == "<=") {
         values <= limit
     } else if (cardinality == ">=") {
         values >= limit
-    } else if (cardinality == ">= or <= -") {
-        abs(values) >= limit
-    } else if (cardinality == "<= and >= -") {
-        values <= limit & values >= -limit
-    } else {
+    } else if (cardinality == ">= or <=") { # abs(values) >= limit
+        if (limit>1) {
+            values <= 1/limit | values >= limit
+        }
+        else { values <= limit | values >= 1/limit }
+    }#else if (cardinality == "<= and >= -") { values <= limit & values >= -limit }
+    else {
         stop("invalid cardinality")
     }
     
