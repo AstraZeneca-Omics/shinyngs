@@ -116,12 +116,14 @@ Read.MAE_RDS <- function(rds.file) {
 				BioTypes       = BioTypes,
 				Contrast.Names = Contrast.Names,
 				Statistics     = Statistics,
-				Contrasts      = metadata(mae)$contrasts
+				Contrasts      = metadata(mae)$contrasts,
+				ESEL.Info      = metadata(mae)$esel.info
 			)
 		)
 		gse.idx <- which(! names(experiments(mae)) %in% app.type)
 		if (length(gse.idx)>0) {
-			summ.expt.lst <- append(summ.expt.lst, list(GSEA=experiments(mae)[gse.idx]))
+			#summ.expt.lst <- append(summ.expt.lst, list(GSEA=experiments(mae)[gse.idx]))
+			summ.expt.lst <- append(summ.expt.lst, list( GSEA=metadata(mae)$ShinyNGS.gsea) )
 		}
 	}
 	return(summ.expt.lst)
@@ -403,36 +405,20 @@ Make_ESE_list <- function(MAE_Object) {
 	        eses = list( "Exploratory Data Analysis" = Read_Exploratory.SummExpt(Summ.Expt) )
 	    )
 	}
-
-	myesel@title       = "Primary (PTEC) / Immortalised (HK2) cell line comparison : Differential Expression & Geneset Enrichment analyses"
-	myesel@description = "" #Summary
-	myesel@author      = "richard.coulson@astrazeneca.com" #author
+	myesel <- Add_App.Info(MAE_Object$ESEL.Info, myesel)
 
 	myesel@url_roots$ensembl_gene_id = Species_URL(
 		MAE_Object[ ! names(MAE_Object) %in% c("se","Contrast.Names","Statistics","Contrasts","GSEA") ]
 	)
-
-	bcb.categorical.vars <- c(
-		"sampleName", "description", "qualityFormat", "bcbio.Dirs"
-	)
-	for (seqQC.metric in bcb.categorical.vars) {
-		if (seqQC.metric %in% colnames(colData(Summ.Expt))) {
-			colData(Summ.Expt)[[ seqQC.metric ]] = as.character( colData(Summ.Expt)[[ seqQC.metric ]] )
-		}
-	}
-
-	Grp.Vars    <- unlist( lapply(colData(Summ.Expt), class) )
-	Grp.Factors <- names(Grp.Vars)[ Grp.Vars %in% c("factor","logical") ]
-
-	myesel@group_vars = sort(make.names(Grp.Factors))
-	myesel@default_groupvar = myesel@group_vars[1] #Add to MAE
 
 	if (MAE_Object$App.Type=="DEA.Results") {
 
 		esel.dat.lst <- list(
 			esel          = myesel,
 			dea.stats     = DEA_Results.lst,
-			atlas.designs = Check.Analysis_Variables(MAE_Object$Contrasts, names(Grp.Vars))
+			atlas.designs = Check.Analysis_Variables(
+				MAE_Object$Contrasts, colnames(colData(Summ.Expt))
+			)
 		)
 
 		esel.stats.lst <- Merge_DEA_Statistics(
@@ -444,6 +430,16 @@ Make_ESE_list <- function(MAE_Object) {
 		}
 	}
 	else { return(myesel) }
+}
+
+## --------------------------------------------------------------------------------------------------------- ##
+
+Add_App.Info <- function(ESEL.Info, esel.obj) {
+
+	Info.Names <- names(ESEL.Info)[ ! names(ESEL.Info) %in% "atlas_levs" ]
+	for (Attr in Info.Names) slot(esel.obj, Attr) = ESEL.Info[[ Attr ]]
+	
+	return(esel.obj)
 }
 
 
@@ -520,52 +516,6 @@ Test_Probabilities <- function(DEA_Stats.lst, Tested_Gene.IDs, Prob.Type) {
 
 ## --------------------------------------------------------------------------------------------------------- ##
 
-Shrunken_FCs <- function(DEA_Stats.lst, Tested_Gene.IDs, Shrink.Metric) {
-
-	msg <- ifelse(
-		Shrink.Metric=="shrunken.log2FC",
-		"<<- **apeGLM/ashr** estimated LFCs ->>\n", "<<- Signal-to-Noise ratios ->>\n"
-	)
-	cat(msg)
-
-	shrunk.est.mat <- do.call("cbind",
-		lapply(names(DEA_Stats.lst),
-			function(Contr) {
-				shrk.lfcs <- rep(NA, length(Tested_Gene.IDs))
-				names(shrk.lfcs) <- Tested_Gene.IDs
-
-				shrunk.vals <- if (Shrink.Metric=="shrunken.log2FC") {
-					DEA_Stats.lst[[ Contr ]][[ Shrink.Metric ]]
-				} else {
-					DEA_Stats.lst[[ Contr ]]$log2FoldChange / DEA_Stats.lst[[ Contr ]][[ Shrink.Metric ]]
-				}
-
-				if ( any(is.na(shrunk.vals)) ) {
-					cat("Setting the apeGLM/ashr shrunken log2FCs or signal-to-noise ratios assigned \"NA\" to zero [",
-						sum(is.na(shrunk.vals))," genes] : Contrast '",Contr,"'\n", sep="")
-					shrunk.vals[ is.na(shrunk.vals) ] <- 0
-				}
-
-				shrk.lfcs[ rownames(DEA_Stats.lst[[ Contr ]]) ] <- shrunk.vals
-
-				TestedGene.cnt <- sum(!is.na(shrk.lfcs))
-				cat("No. Genes tested=",formatC(TestedGene.cnt, format="d", big.mark=","),
-					" [\"",Shrink.Metric,"\"]\n", sep="")
-				if (TestedGene.cnt!=length(shrunk.vals)) {
-					stop("No. genes tested **DOES NOT EQUAL** number in SummarizedExperiment")
-				}
-				return(shrk.lfcs)
-			}
-		)
-	)
-	colnames(shrunk.est.mat) <- names(DEA_Stats.lst)
-
-	print(DataFrame(shrunk.est.mat, check.names=F)); cat("\n\n")
-	return(shrunk.est.mat)
-}
-
-## --------------------------------------------------------------------------------------------------------- ##
-
 Check_TestLevs_Present <- function(Contrasts.lst, ComparisonName, SummExpt_Levels, Test_Grp) {
 
 	Levels <- Contrasts.lst[[ ComparisonName ]][[ paste0(Test_Grp,"Levels") ]]
@@ -604,7 +554,6 @@ DEA.Contrast.Stats <- function(DEA_rds.lst, Gene.IDs, trxnExpt.type) {
 	dea.Results.lst <- lapply(DEA_rds.lst, function(x) x[, DEA_Results.Vars] )
 	str(dea.Results.lst)
 
-	##
 	Genes.Identical <- unlist( lapply(dea.Results.lst, function(x) all(rownames(x) %in% Gene.IDs)) )
 	cat("\nChecking all the genes tested for each contrast are in the SummarizedExperiment object :-\n")
 	print(DataFrame(Genes.Identical)); cat("\n\n")
@@ -615,10 +564,6 @@ DEA.Contrast.Stats <- function(DEA_rds.lst, Gene.IDs, trxnExpt.type) {
 		stats.shiny.lst[[ "fold_changes" ]] = Model_Coefficients(dea.Results.lst, Gene.IDs)
 		stats.shiny.lst[[ "pvals" ]]        = Test_Probabilities(dea.Results.lst, Gene.IDs, "prob")
 		stats.shiny.lst[[ "qvals" ]]        = Test_Probabilities(dea.Results.lst, Gene.IDs, "adj.pval")
-
-		shrunken.lfcs <- Shrunken_FCs(
-			dea.Results.lst, Gene.IDs, DEA_Results.Vars[ length(DEA_Results.Vars) ]
-		)
 	}
 	else {
 		cat("\n!!CHECK!! Contrasts : '",
@@ -626,7 +571,7 @@ DEA.Contrast.Stats <- function(DEA_rds.lst, Gene.IDs, trxnExpt.type) {
 		stop("Tested genes are **ABSENT** from the SummarizedExperiment object")
 	}
 
-	return( list(contrast_stats=stats.shiny.lst, Shrnk.LFCs=shrunken.lfcs) )
+	return( list(contrast_stats=stats.shiny.lst) )
 }
 
 ## --------------------------------------------------------------------------------------------------------- ##
@@ -779,7 +724,6 @@ Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
 	}
 
 	Comparisons_lst   <- list()
-	Shrunken_LFCs.lst <- list()
 
 	for (biotype in names(ESEL_Object$dea.stats)) {
 		BioType_Desc <- ESEL_Object$dea.stats[[ biotype ]]$desc
@@ -799,7 +743,27 @@ Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
 			Expt_Type
 		)
 		cat("\nAdding differential expression analysis results for gene-biotype \"",biotype,"\" :-\n", sep="")
-		str(DEA_Object); cat("\n")
+		str(DEA_Object); cat("\n") 
+
+		contrs <- lapply(DEA_Object$contrast_stats, function(x) colnames(x))
+
+		chk.contrs <- unlist(
+			lapply(2:length(contrs),
+				function(i) all.equal(contrs[i], contrs[1], check.names=F)
+			)
+		)
+		names(chk.contrs) <- names(contrs)[ 2:length(contrs) ]
+
+		Checked.Contrasts <- if (all(chk.contrs)) {
+			unlist(contrs[1])
+		}
+		else {
+			mm.contrs <- sort(names(chk.contrs)[ ! chk.contrs ])
+			cat("Mismatched contrasts for metric(s) : '",
+				paste(mm.contrs, collapse="', '"),"'\n<<Contrasts List>>\n", sep="")
+			print(contrs)
+			stop("***COMPARISONS ARE NOT IDENTICAL FOR ALL DEA STATISTICS***")
+		}
 
 		## Deal with continuous variables in design ##
 		Experimental_Variables <- colnames( colData(myesel[[ BioType_Desc ]]) )
@@ -817,10 +781,9 @@ Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
 			cat("\nABSENT from sample sheet but PRESENT in design : \"",paste(Absent.Vars,collapse="\", \""),"\"\n", sep="")
 			stop("**MISSING ANALYSIS VARIABLES**")
 		}
-		Shrunken_LFCs.lst[[ BioType_Desc ]] = DEA_Object$Shrnk.LFCs
 
 		comparison.grps.lst <- DEA.Contrasts(
-			Contrasts, biotype, colnames(DEA_Object$Shrnk.LFCs),
+			Contrasts, biotype, Checked.Contrasts,
 			Atlas_Grp.Names, colData(myesel[[ BioType_Desc ]])
 		)
 		Comparisons_lst <- append(Comparisons_lst, comparison.grps.lst$contrasts)
@@ -840,109 +803,7 @@ Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
 	cat("\nALL comparisons (contrasts) performed for DEA :-\n")
 	print(myesel@contrasts)
 
-	return( list(esel=myesel, shrk.lfcs=Shrunken_LFCs.lst) )
-}
-## --------------------------------------------------------------------------------------------------------- ##
-
-GSE.Results <- function(GSEA.MAE, Shrnk.LFCs, Contrasts, Gene.Biotype, Gene.Symbols) {
-
-	GSE_Stats.lst <- list()
-	gSets.lst     <- list()
-
-	for (gs.Type in names(GSEA.MAE)) {
-		cat("\nCreating \"",gs.Type,"\" Gene Sets :-\n",sep="")
-		GSE_Results <- GSEA.MAE[[ gs.Type ]]
-
-		GeneSets <- metadata(GSE_Results)$gene_sets[[ Gene.Biotype ]]$gene_set.members
-		Term.Descriptions <- metadata(GSE_Results)$gene_sets[[ Gene.Biotype ]]$gene_set.desc
-
-		contr.idx <- grep(paste0("\\.",Gene.Biotype,"\\.\\_\\."), colnames(rowData(GSE_Results)), perl=T)
-		fgsea.df <- rowData(GSE_Results)[, contr.idx]
-
-		contr.regex <- paste0("^(\\S.*\\S)\\.",Gene.Biotype,"\\.\\_\\.(\\S+)$")
-		Comparisons <- unique(
-			sub(contr.regex, "\\1", colnames(fgsea.df), perl=T)
-		)
-
-		GSE_Stats.lst[[ gs.Type ]] <- lapply(Comparisons,
-			function(contr) {
-				cat("\t<< CONTRAST : '",contr,"' fGSEA statistics >>\n", sep="")
-				if (! contr %in% Contrasts) stop("***NO DEA RESULTS FOR COMPARISON***")
-
-				gse.results <- fgsea.df[, grep(paste0("^",contr), colnames(fgsea.df)) ]
-				colnames(gse.results) <- sub(contr.regex, "\\2", colnames(gse.results), perl=T)
-				gse.results <- gse.results[, c("NES","pval","padj") ]
-
-
-				## Having NA's causes 'Error: missing value where TRUE/FALSE needed' ##
-				if ( any(is.na(gse.results$NES)) ) {
-					missing.res.idx <- which( is.na(gse.results$NES) )
-					no.missing      <- length(missing.res.idx)
-
-					gse.results[ missing.res.idx, 1:ncol(gse.results) ] = matrix(
-						rep(c(0,1,1),no.missing), nrow=no.missing, byrow=T
-					)
-					cat("\tThere are **MISSING RESULTS** for ",length(missing.res.idx)," geneset(s) :-\n",
-						"\t'",paste(sort(rownames(gse.results)[missing.res.idx]), collapse="', '"),"'\n", sep="")
-				}
-
-				gse_contr.df <- do.call("rbind",
-					lapply(rownames(gse.results),
-						function(term) {
-							genes <- GeneSets[[ term ]]
-							size  <- length(genes)
-
-							Shrk.lfcs <- Shrnk.LFCs[rownames(Shrnk.LFCs) %in% genes, contr]
-							GSE_Count <- sum(! is.na(Shrk.lfcs))
-
-							gse.stats.df <- setNames(
-								data.frame(
-									size, GSE_Count,
-
-									# Calculate directional proportions
-									signif(sum(Shrk.lfcs<0, na.rm=TRUE)/GSE_Count, digits=3),
-									signif(sum(Shrk.lfcs>0, na.rm=TRUE)/GSE_Count, digits=3),
-
-									sign(gse.results[term, "NES"]),
-									signif(gse.results[term, "NES"], digits=5),
-
-									signif(gse.results[term, "pval"], digits=3),
-									signif(gse.results[term, "padj"], digits=3),
-
-									row.names=Term.Descriptions[ term ]),
-								c("GeneSetSize", "NumberTested", "PropDown", "PropUp", "Direction", "NES", "PValue", "FDR")
-							)
-							return(gse.stats.df)
-						}
-					)
-				)
-
-				gse_contr.df$Direction <- as.factor(
-					ifelse(gse_contr.df$Direction==0, "NoRes",
-						ifelse(gse_contr.df$Direction==1, "Up", "Down")
-					)
-				)
-				return(gse_contr.df)
-			}
-		)
-		names(GSE_Stats.lst[[ gs.Type ]]) <- Comparisons
-
-		gSets.lst[[ gs.Type ]] <- lapply(names(GeneSets),
-			function(term) {
-				genes <- GeneSets[[ term ]]
-
-				gn.idx  <- which(Gene.Symbols$ensembl_gene_id %in% genes)
-				symbols <- Gene.Symbols$external_gene_name[ gn.idx ]
-				names(symbols) <- symbols
-
-				return(symbols)
-			}
-		)
-		names(gSets.lst[[ gs.Type ]]) <- Term.Descriptions[ names(GeneSets) ]
-
-		cat("Done [",length(gSets.lst[[ gs.Type ]])," terms tested]\n", sep="")
-	}
-	return( list(stats=GSE_Stats.lst, gene.sets=gSets.lst) )
+	return( list(esel=myesel) )
 }
 
 ## --------------------------------------------------------------------------------------------------------- ##
@@ -1011,29 +872,20 @@ Merge.GeneSets <- function(Analysis.GeneSets) {
 ## --------------------------------------------------------------------------------------------------------- ##
 
 Add_GSEA_Results <- function(MAE.Object, ESEL.Data, DEA.Statistics) {
-	
+
+	myesel <- ESEL.Data$esel
+
 	### !!! Important to ASSIGN correctly for platform i.e whether microarray or RNA-seq !!! ###
 	Assay.Variable <- ifelse(
 		MAE.Object$Expt.Type=="RNA-seq", "counts", "NormVals"
 	)
 
-	myesel <- ESEL.Data$esel
-	Contr.Names <- names(myesel@contrasts)
-
 	Gene_Sets <- list()
 	for (biotype in names(DEA.Statistics)) {
 		BioType_Desc <- DEA.Statistics[[ biotype ]]$desc
 
-		gsea.results.lst <- GSE.Results(
-			MAE.Object$GSEA,
-			ESEL.Data$shrk.lfcs[[ BioType_Desc ]],
-			Contr.Names,
-			biotype,
-			rowData(MAE.Object$se)[, c("ensembl_gene_id","external_gene_name")]
-		)
-		myesel[[ BioType_Desc ]]@gene_set_analyses[[ Assay.Variable ]] = gsea.results.lst$stats
-
-		Gene_Sets[[ BioType_Desc ]] = gsea.results.lst$gene.sets
+		myesel[[ BioType_Desc ]]@gene_set_analyses[[ Assay.Variable ]] = MAE.Object$GSEA[[ biotype ]]$stats
+		Gene_Sets[[ BioType_Desc ]] = MAE.Object$GSEA[[ biotype ]]$gene.sets
 	}
 
 	myesel@gene_set_id_type = "external_gene_name"
