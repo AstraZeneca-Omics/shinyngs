@@ -40,6 +40,7 @@ Read.MAE_RDS <- function(rds.file) {
 
 	SummExpt <- mae[[ app.type ]]
 	colData(SummExpt) <- colData(mae)
+	cat("\n")
 
 			## -------------------------------------------------------------------- ##
 	
@@ -67,7 +68,7 @@ Read.MAE_RDS <- function(rds.file) {
 			number.Dups <- length(unique(
 				rowData(SummExpt)$external_gene_name[ duplicated(rowData(SummExpt)$external_gene_name) ]
 			))
-			cat("\nNo. *DUPLICATED* gene symbols : ",number.Dups,"\n\n", sep="")
+			cat("No. *DUPLICATED* gene symbols : ",number.Dups,"\n\n", sep="")
 			rowData(SummExpt)$external_gene_name = make.unique(
 				rowData(SummExpt)$external_gene_name, sep="__"
 			)
@@ -94,7 +95,7 @@ Read.MAE_RDS <- function(rds.file) {
 	} else { stop("***NO EXPERIMENT TYPE IN MultiAssayExperiment Object***") }
 
 	summ.expt.lst <- list(
-		App.Type=app.type, Expt.Type=expt.type, Species=species, se=SummExpt
+		App.Type=app.type, Expt.Type=expt.type, Species=species, se=SummExpt, ESEL.Info=metadata(mae)$esel.info
 	)
 
 	if (app.type=="DEA.Results") {
@@ -116,13 +117,11 @@ Read.MAE_RDS <- function(rds.file) {
 				BioTypes       = BioTypes,
 				Contrast.Names = Contrast.Names,
 				Statistics     = Statistics,
-				Contrasts      = metadata(mae)$contrasts,
-				ESEL.Info      = metadata(mae)$esel.info
+				Contrasts      = metadata(mae)$contrasts
 			)
 		)
 		gse.idx <- which(! names(experiments(mae)) %in% app.type)
 		if (length(gse.idx)>0) {
-			#summ.expt.lst <- append(summ.expt.lst, list(GSEA=experiments(mae)[gse.idx]))
 			summ.expt.lst <- append(summ.expt.lst, list( GSEA=metadata(mae)$ShinyNGS.gsea) )
 		}
 	}
@@ -190,9 +189,10 @@ ExploratorySummarizedExperiment.SingleFact <- function(
 	  "ExploratorySummarizedExperiment", sumexp, idfield = idfield, labelfield = labelfield, entrezgenefield = entrezgenefield, assay_measures = assay_measures, 
 	  contrast_stats = contrast_stats, gene_set_analyses = gene_set_analyses, dexseq_results = dexseq_results, read_reports = read_reports
 	)
-} 
+}
 
-#' @export
+## --------------------------------------------------------------------------------------------------------- ## 
+
 Excluded_Samples_Check <- function(Samples, Contr.lst) {
 	DEA_BioTypes     <- NULL
 	excluded.samples <- NULL
@@ -227,7 +227,6 @@ Excluded_Samples_Check <- function(Samples, Contr.lst) {
 
 ## --------------------------------------------------------------------------------------------------------- ##
 
-#' @export
 Construct_Exploratory.Ranged.SummExpt <- function(
 	Summ.Expt, Contr.Metadata, Biotype, Contrasts, DEA.Stats)
 {
@@ -372,6 +371,65 @@ Check.Analysis_Variables <- function(Contrast.MetaData, Phenotypes) {
 }
 
 
+Read_Exploratory.SummExpt <- function(Summ_Expt, trxnExpt.type) {
+
+	Stored.Assays   <- names(assays(Summ_Expt))
+	cat("\nASSAYS stored : '",paste(sort(Stored.Assays), collapse="', '"),"'\n", sep="")
+
+	if (trxnExpt.type=="RNA-seq") {
+		Required.Assays <- c("counts","vst")
+
+		if (! all(Required.Assays %in% Stored.Assays)) {
+			cat("\n"); stop("Assays 'counts' & 'vst' must be ***INCLUDED*** in assay list")
+		}
+		else {
+			if ("tpm" %in% Stored.Assays) Required.Assays <- c(Required.Assays,"tpm")
+
+			myassays <- lapply(Required.Assays, function(x) as.data.frame(assays(Summ_Expt)[[ x ]]))
+			names(myassays) <- Required.Assays
+
+			Assay.Types <- names(myassays)
+			vst.idx <- grep("^vst", Assay.Types)
+			Sorted_AssayNames <- c(sort(Assay.Types[vst.idx]), sort(Assay.Types[-vst.idx]))
+
+			myassays <- myassays[ Sorted_AssayNames ]
+		}
+	}
+	else {
+		if (! "normVals" %in% Stored.Assays) {
+			cat("\n"); stop("Assay 'normVals' must be included in assay list for ***NON RNA-Seq DATA***")
+		} else {
+			myassays  <- list(
+				NormVals = if (trxnExpt.type=="Affymetrix") {
+					2^assays(Summ_Expt)$normVals } else { assays(Summ_Expt)$normVals }
+			)
+		}
+	}
+	cat("\nASSAYS loaded <--",paste(sort(names(myassays)), collapse=", "),"-->\n",
+				"Loaded assays from experiment of type '",trxnExpt.type,"' :-\n", sep="")
+	str(myassays)
+
+	BM.Annots <- if (nrow(rowData(Summ_Expt))>0) {
+		rowData(Summ_Expt)
+	} else {
+		cat("\n"); stop("***THERE ARE NO GENE FEATURES IN THE SummarizedExperiment OBJECT***")
+	}
+	cat("\nGene annotations :-\n")
+	print(DataFrame(BM.Annots, check.names=F))
+	
+	cat("\nCreating 'ExploratorySummarizedExperiment' object  ...  ")
+	ese <- ExploratorySummarizedExperiment.SingleFact(
+	  assays = SimpleList(myassays), colData = colData(Summ_Expt), annotation = DataFrame(BM.Annots),
+	  idfield = "ensembl_gene_id", labelfield = "external_gene_name"
+	)
+	cat("done\n\nESE object structure :-\n"); print(ese)
+	cat("\n"); str(ese); cat("\nSample sheet :-\n")
+	print(colData(ese)); cat("\n\n")
+	
+	return(ese)
+}
+
+
 #' Creates a ExploratorySummarizedExperiment list object
 #' 
 #' Contain one or more ExploratorysummarizedExperiments with the same sets of samples/columns but different feature sets. This facilitates the examination of expression at, for example, both transcript and gene levels or for different gene biotypes in RNA-seq experiments explorted via ‘Shinyngs’
@@ -387,7 +445,7 @@ Make_ESE_list <- function(MAE_Object) {
 		ESE_Objs.lst    <- list()
 		DEA_Results.lst <- list()
 
-		for (gene.biotype in dea.res.lst$BioTypes) {
+		for (gene.biotype in MAE_Object$BioTypes) {
 			DEA_ESE.lst <- Construct_Exploratory.Ranged.SummExpt(
 				Summ.Expt, MAE_Object$Contrasts, gene.biotype, MAE_Object$Contrast.Names, MAE_Object$Statistics
 			)
@@ -402,10 +460,16 @@ Make_ESE_list <- function(MAE_Object) {
 	}
 	else {
 		myesel <- ExploratorySummarizedExperimentList(
-	        eses = list( "Exploratory Data Analysis" = Read_Exploratory.SummExpt(Summ.Expt) )
-	    )
+			eses = list(
+				"Exploratory Data Analysis" = Read_Exploratory.SummExpt(Summ.Expt, MAE_Object$Expt.Type)
+			)
+		)
 	}
 	myesel <- Add_App.Info(MAE_Object$ESEL.Info, myesel)
+
+	if (MAE_Object$Expt.Type!="RNA-seq") {
+		slot(myesel@.Data[[1]], "idfield") = "ProbeSet_Id"
+	}
 
 	myesel@url_roots$ensembl_gene_id = Species_URL(
 		MAE_Object[ ! names(MAE_Object) %in% c("se","Contrast.Names","Statistics","Contrasts","GSEA") ]
@@ -422,7 +486,7 @@ Make_ESE_list <- function(MAE_Object) {
 		)
 
 		esel.stats.lst <- Merge_DEA_Statistics(
-			esel.dat.lst, MAE_Object$Expt.Type, MAE_Object$Contrasts
+			esel.dat.lst, MAE_Object$Expt.Type, MAE_Object$Contrasts, MAE_Object$ESEL.Info, colData(MAE_Object$se)
 		)
 
 		if ("GSEA" %in% names(MAE_Object)) {
@@ -614,7 +678,7 @@ DEA.Contrasts <- function(MetaData, BioType, Comparisons, Atlas.Groupings, Pheno
 				c(cleaned.fact, "Q1", "Q4")
 			}
 			else if (Factor==denominator) {
-				num.lev     <- DEA_rds.lst[[ contr ]]$NumeratorLevels
+				num.lev     <- cntrs.lst[[ contr ]]$NumeratorLevels
 				atlasFactor <- Atlas.Groupings[ num.lev ]
 				## unname() is _IMPORTANT_ - otherwise it breaks volcano plots etc. ##
 				return( c(unname(atlasFactor), "Others", num.lev) )
@@ -649,39 +713,46 @@ DEA.Contrasts <- function(MetaData, BioType, Comparisons, Atlas.Groupings, Pheno
 
 Add_Contrast_Levels <- function(FactorName, numerator.levs, denominator.levs, Phenotypic.Data) {
 
-    phenos <- colnames(Phenotypic.Data)
-    fact.count  <- sum(grepl(paste0("^",FactorName), phenos, perl=T))
-    constr.name <- make.names(paste0(FactorName,"_C",fact.count))
+	phenos <- colnames(Phenotypic.Data)
+	fact.count  <- sum(grepl(paste0("^",FactorName), phenos, perl=T))
+	constr.name <- make.names(paste0(FactorName,"_C",fact.count))
 
-    num.strg <- paste(sort(numerator.levs), collapse="_")
-    den.strg <- paste(sort(denominator.levs), collapse="_")
+	num.strg <- paste(sort(numerator.levs), collapse="_")
+	den.strg <- paste(sort(denominator.levs), collapse="_")
 
-    constr.lst <- list( Contrast=c(constr.name, den.strg, num.strg) )
+	constr.lst <- list( Contrast=c(constr.name, den.strg, num.strg) )
 
-    constr.lst[[ "Levels" ]] = setNames(
-        data.frame(
-            unlist(lapply(Phenotypic.Data[[ FactorName ]],
-                function(l) {
-                    ifelse(l %in% numerator.levs, num.strg,
-                        ifelse(l %in% denominator.levs, den.strg, "OMITTED")
-                    )
-                }
-            )), row.names=rownames(Phenotypic.Data)),
-        constr.name
-    )
-    return(constr.lst)
+	constr.lst[[ "Levels" ]] = setNames(
+		data.frame(
+			unlist(lapply(Phenotypic.Data[[ FactorName ]],
+				function(l) {
+					ifelse(l %in% numerator.levs, num.strg,
+						ifelse(l %in% denominator.levs, den.strg, "OMITTED")
+					)
+				}
+			)), row.names=rownames(Phenotypic.Data)),
+		constr.name
+	)
+	return(constr.lst)
 }
 
 ## --------------------------------------------------------------------------------------------------------- ##
 
-AtlasDesign.Levels <- function(Atlas.GroupVar, Atlas.Levels, Phenotypes) {
+AtlasDesign.Levels <- function(Analysis.Info, Sample.Data) {
 
+	Atlas.Levels <- Analysis.Info$atlas_levs
+	if (all(is.na(Atlas.Levels))) stop("***NO LEVELS FOR ATLAS FACTOR PROVIDED***")
+
+	Atlas.GroupVar <- Analysis.Info$default_groupvar
 	cat("\nLevels used in \"Atlas\" design for factor \"",Atlas.GroupVar,"\" :-\n",
 		paste0("'",paste(sort(Atlas.Levels), collapse="', '"),"'"), "\n\n", sep="")
+	if (! Atlas.GroupVar %in% colnames(Sample.Data)) {
+		stop("***ATLAS FACTOR ISN'T A LISTED PHENOTYPE***")
+	}
 
-	Levels <- Phenotypes[[ Atlas.GroupVar ]]
+	Levels <- Sample.Data[[ Atlas.GroupVar ]]
 	if (! is.character(Levels)) Levels <- as.character(Levels)
-	names(Levels) <- rownames(Phenotypes)
+	names(Levels) <- rownames(Sample.Data)
 
 	atlas.levs.df <- data.frame(
 		do.call("cbind", lapply(Atlas.Levels,
@@ -711,19 +782,24 @@ AtlasDesign.Levels <- function(Atlas.GroupVar, Atlas.Levels, Phenotypes) {
 #' @param ESEL_Object List containing - minimally - a SummarizedExperiment object, species data derived from and type of transcriptomics analysis
 #'
 #' @export
-Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
+Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts, ESEL.Info, Phenos) {
 
 	myesel <- ESEL_Object$esel
 
-	Atlas_Grp.Names <- if (ESEL_Object$atlas.designs) {
-		atlas.pheno.lst <- AtlasDesign.Levels(Default.GroupVar, atlas.levs, colData(mae))
-		atlas.pheno.lst$Groups
+	Atlas_Phenos.lst <- if (ESEL_Object$atlas.designs) {
+		AtlasDesign.Levels(ESEL.Info, Phenos)
 	} else {
 		cat("\nThis is *NOT* an \"Atlas\" design!\n\n", sep="")
-		NA
+		list( Groups=NA )
 	}
 
-	Comparisons_lst   <- list()
+	if ("Levels" %in% names(Atlas_Phenos.lst)) {
+		slot(myesel, "group_vars") = sort(
+			c(myesel@group_vars, colnames(Atlas_Phenos.lst$Levels))
+		)
+	}
+
+	Comparisons_lst <- list()
 
 	for (biotype in names(ESEL_Object$dea.stats)) {
 		BioType_Desc <- ESEL_Object$dea.stats[[ biotype ]]$desc
@@ -731,7 +807,7 @@ Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
 		if (ESEL_Object$atlas.designs) {
 			colData(myesel[[ BioType_Desc ]]) <- cbind(
 				colData(myesel[[ BioType_Desc ]]),
-				atlas.pheno.lst$Levels[ rownames( colData(myesel[[ BioType_Desc ]]) ), ]
+				Atlas_Phenos.lst$Levels[ rownames( colData(myesel[[ BioType_Desc ]]) ), ]
 			)
 			cat("Modified manifest for '",BioType_Desc,"' :-\n", sep="")
 			print( colData(myesel[[ BioType_Desc ]]) ); cat("\n")
@@ -784,7 +860,7 @@ Merge_DEA_Statistics <- function(ESEL_Object, Expt_Type, Contrasts) {
 
 		comparison.grps.lst <- DEA.Contrasts(
 			Contrasts, biotype, Checked.Contrasts,
-			Atlas_Grp.Names, colData(myesel[[ BioType_Desc ]])
+			Atlas_Phenos.lst$Groups, colData(myesel[[ BioType_Desc ]])
 		)
 		Comparisons_lst <- append(Comparisons_lst, comparison.grps.lst$contrasts)
 	}

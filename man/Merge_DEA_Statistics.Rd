@@ -4,7 +4,7 @@
 \alias{Merge_DEA_Statistics}
 \title{Add DEA results ExploratorySummarizedExperiment list}
 \usage{
-Merge_DEA_Statistics(ESEL_Object, Expt_Type, Contrasts)
+Merge_DEA_Statistics(ESEL_Object, Expt_Type, Contrasts, ESEL.Info, Phenos)
 }
 \arguments{
 \item{ESEL_Object}{List containing - minimally - a SummarizedExperiment object, species data derived from and type of transcriptomics analysis}
